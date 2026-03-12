@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  postgres-product:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: productdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - product-data:/var/lib/postgresql/data
+
+  postgres-inventory:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inventorydb
+    ports:
+      - "5433:5432"
+    volumes:
+      - inventory-data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  product-service:
+    build: ./product-service
+    ports:
+      - "50051:50051"
+    depends_on:
+      - postgres-product
+      - kafka
+    environment:
+      GRPC_PORT: 50051
+      DB_HOST: postgres-product
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: productdb
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: product-events
+      INVENTORY_SERVICE_ADDR: inventory-service:50052
+
+  inventory-service:
+    build: ./inventory-service
+    ports:
+      - "50052:50052"
+    depends_on:
+      - postgres-inventory
+      - kafka
+    environment:
+      GRPC_PORT: 50052
+      DB_HOST: postgres-inventory
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: inventorydb
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: product-events
+      KAFKA_GROUP_ID: inventory-group
+
+volumes:
+  product-data:
+  inventory-data:
